@@ -39,9 +39,9 @@ jobs:
           path: raw_reviews/
           retention-days: 30
 
-      - name: Upload to Supabase
+      - name: Clean and upload to Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          python scraper/upload_to_supabase.py
+          python scraper/clean_and_upload.py
