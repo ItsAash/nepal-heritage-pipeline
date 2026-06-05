@@ -192,11 +192,9 @@ def deduplicate_and_filter(records: list[dict]) -> list[dict]:
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
-
 def process_and_upload():
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # Find latest JSONL
     jsonl_files = list(Path("raw_reviews").glob("reviews_*.jsonl"))
     if not jsonl_files:
         raise Exception("No JSONL file found in raw_reviews/")
@@ -204,13 +202,11 @@ def process_and_upload():
     jsonl_file = jsonl_files[0]
     run_id = jsonl_file.stem.replace("reviews_", "")
 
-    # Extract
     reviews = extract_reviews(str(jsonl_file))
 
-    # Transform each review
+    # Transform all reviews
     records = []
     for review in reviews:
-        # ... (same transformation code as before)
         flat = flatten_fields(review)
         dates = parse_dates(review)
 
@@ -264,39 +260,62 @@ def process_and_upload():
         }
         records.append(record)
 
-    # Deduplicate & filter
     records = deduplicate_and_filter(records)
+    log.info(f"Records from this scrape: {len(records)}")
 
-    log.info(f"Final records to upload: {len(records)}")
+    # ========== INCREMENTAL LOAD: Only insert new review_ids ==========
 
-    # ========== UPSERT: Delete old data for this run_id, insert fresh ==========
+    # Get existing review_ids from Supabase
+    log.info("Fetching existing review_ids from Supabase...")
+    existing_ids = set()
+    page = 0
+    while True:
+        response = supabase.table("cleaned_reviews") \
+            .select("review_id") \
+            .range(page * 1000, (page + 1) * 1000 - 1) \
+            .execute()
 
-    # 1. Delete previous records with same run_id (if any)
-    log.info(f"Clearing old data for run_id: {run_id}")
-    supabase.table("cleaned_reviews").delete().eq("run_id", run_id).execute()
+        if not response.data:
+            break
 
-    # 2. Insert fresh records in batches
-    BATCH_SIZE = 100
-    for i in range(0, len(records), BATCH_SIZE):
-        batch = records[i:i+BATCH_SIZE]
-        supabase.table("cleaned_reviews").insert(batch).execute()
-        log.info(f"  Uploaded batch {i//BATCH_SIZE + 1}/{(len(records)-1)//BATCH_SIZE + 1}")
+        for row in response.data:
+            existing_ids.add(row["review_id"])
 
-    log.info(f"✓ Uploaded {len(records)} fresh cleaned reviews to Supabase")
+        if len(response.data) < 1000:
+            break
+        page += 1
 
-    # 3. Upsert scrape_runs metadata (delete old, insert new)
-    supabase.table("scrape_runs").delete().eq("run_id", run_id).execute()
+    log.info(f"Existing reviews in database: {len(existing_ids)}")
+
+    # Filter to only new records
+    new_records = [r for r in records if r["review_id"] not in existing_ids]
+    log.info(f"New reviews to insert: {len(new_records)}")
+
+    # Insert only new records
+    if new_records:
+        BATCH_SIZE = 100
+        for i in range(0, len(new_records), BATCH_SIZE):
+            batch = new_records[i:i+BATCH_SIZE]
+            supabase.table("cleaned_reviews").insert(batch).execute()
+            log.info(f"  Inserted batch {i//BATCH_SIZE + 1}/{(len(new_records)-1)//BATCH_SIZE + 1}")
+
+        log.info(f"✓ Inserted {len(new_records)} new reviews")
+    else:
+        log.info("✓ No new reviews to insert")
+
+    # Track this run (always insert, since run_id is unique)
     supabase.table("scrape_runs").insert({
         "run_id": run_id,
         "run_date": datetime.now().strftime("%Y%m%d_%H%M%S"),
         "total_reviews": len(records),
+        "new_reviews": len(new_records),
         "total_pages": len(list(Path("raw_reviews").glob("page_*.json"))),
         "storage_path": "supabase_postgresql_table",
         "scraped_at": datetime.now().isoformat(),
     }).execute()
 
-    log.info(f"✓ Run tracked: {run_id}")
-    return len(records)
+    log.info(f"✓ Run tracked: {run_id} | New: {len(new_records)} | Total in DB: {len(existing_ids) + len(new_records)}")
+    return len(new_records)
 
 
 if __name__ == "__main__":
