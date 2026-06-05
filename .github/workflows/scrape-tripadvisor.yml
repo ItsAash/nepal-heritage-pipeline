@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests
+          pip install requests supabase
 
       - name: Run scraper
         env:
@@ -39,9 +39,9 @@ jobs:
           path: raw_reviews/
           retention-days: 30
 
-      - name: Upload to Unity Catalog Volume
+      - name: Upload to Supabase
         env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          python scraper/upload_to_databricks.py
+          python scraper/upload_to_supabase.py
