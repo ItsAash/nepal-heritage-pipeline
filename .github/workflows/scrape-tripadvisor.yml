@@ -1,0 +1,47 @@
+name: Scrape Pashupatinath Reviews
+
+on:
+  schedule:
+    - cron: '0 0 */15 * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Run scraper
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          python scraper/scraper.py
+
+      - name: Validate output
+        run: |
+          python scraper/validate.py
+
+      - name: Upload raw data as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-reviews-${{ github.run_id }}
+          path: raw_reviews/
+          retention-days: 30
+
+      - name: Upload to Unity Catalog Volume
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          python scraper/upload_to_databricks.py
