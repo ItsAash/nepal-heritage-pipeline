@@ -3,6 +3,7 @@ batch_handler.py
 OpenAI Batch API handler: chunking, submission, polling, checkpointing.
 """
 
+from io import BytesIO
 import json
 import sys
 import time
@@ -57,13 +58,14 @@ class BatchHandler:
         
         # Submit batch
         batch_file = self.client.files.create(
-            file=("batch.jsonl", jsonl_content, "application/octet-stream"),
+            file=BytesIO(jsonl_content.encode("utf-8")),
+            purpose="batch"
         )
         
-        batch = self.client.beta.batches.create(
+        batch = self.client.batches.create(
             input_file_id=batch_file.id,
             endpoint="/v1/chat/completions",
-            timeout_minutes=60,
+            completion_window="24h"
         )
         
         log_event("batch_submitted", {
@@ -74,7 +76,7 @@ class BatchHandler:
         
         return batch.id
     
-    def poll_batch(self, batch_id: str, timeout_seconds: int = 3600) -> Dict[str, Any]:
+    def poll_batch(self, batch_id: str, timeout_seconds: int = 3600):
         """
         Poll batch until completion or timeout.
         
@@ -84,29 +86,40 @@ class BatchHandler:
         poll_interval = 10  # seconds
         
         while time.time() - start_time < timeout_seconds:
-            batch = self.client.beta.batches.retrieve(batch_id)
-            
+            batch = self.client.batches.retrieve(batch_id)
+
+            # Debug SDK response shape during development
+            if hasattr(batch, "request_counts"):
+                try:
+                    log_event("batch_request_counts_shape", {
+                        "fields": list(batch.request_counts.model_dump().keys())
+                    })
+                except Exception:
+                    pass
+
+            request_counts = getattr(batch, "request_counts", None)
+
             log_event("batch_polling", {
                 "batch_id": batch_id,
                 "status": batch.status,
-                "processing_count": batch.request_counts.processing,
-                "completed_count": batch.request_counts.completed,
-                "failed_count": batch.request_counts.failed,
+                "request_counts": request_counts.model_dump() if hasattr(request_counts, "model_dump") else str(request_counts),
             })
             
             if batch.status == "completed":
                 log_event("batch_completed", {"batch_id": batch_id})
                 return batch
             
-            if batch.status == "failed":
-                raise RuntimeError(f"Batch {batch_id} failed: {batch.errors}")
+            if batch.status in {"failed", "expired", "cancelled"}:
+                raise RuntimeError(
+                    f"Batch {batch_id} ended with status={batch.status}: {getattr(batch, 'errors', None)}"
+                )
             
             # Wait before polling again
             time.sleep(poll_interval)
         
         raise TimeoutError(f"Batch {batch_id} did not complete within {timeout_seconds}s")
     
-    def retrieve_results(self, batch: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def retrieve_results(self, batch) -> List[Dict[str, Any]]:
         """
         Retrieve and parse results from completed batch.
         
@@ -121,31 +134,48 @@ class BatchHandler:
         results = []
         
         # Retrieve output file
-        output_file = self.client.files.content(batch.output_file_id)
-        output_lines = output_file.text.strip().split("\n")
+        content = self.client.files.content(batch.output_file_id)
+
+        if hasattr(content, "text"):
+            raw_text = content.text
+        elif hasattr(content, "read"):
+            raw_text = content.read().decode("utf-8")
+        else:
+            raw_text = str(content)
+
+        output_lines = raw_text.strip().split("\n")
         
         for line in output_lines:
+            if not line.strip():
+                continue
+
             result_obj = json.loads(line)
-            
+
             review_id = result_obj["custom_id"]
-            
-            if result_obj["result"]["status"] == "succeeded":
-                # Extract LLM response
-                llm_response = result_obj["result"]["message"]["content"]
-                
-                results.append({
-                    "review_id": review_id,
-                    "status": "succeeded",
-                    "response": llm_response,
-                })
+
+            response_body = result_obj.get("response", {}).get("body", {})
+            error_obj = result_obj.get("error")
+
+            if error_obj is None:
+                try:
+                    llm_response = response_body["choices"][0]["message"]["content"]
+
+                    results.append({
+                        "review_id": review_id,
+                        "status": "succeeded",
+                        "response": llm_response,
+                    })
+                except Exception as exc:
+                    results.append({
+                        "review_id": review_id,
+                        "status": "failed",
+                        "error": f"Response parsing failed: {exc}",
+                    })
             else:
-                # API error
-                error_msg = result_obj["result"].get("error", {}).get("message", "Unknown error")
-                
                 results.append({
                     "review_id": review_id,
                     "status": "failed",
-                    "error": error_msg,
+                    "error": str(error_obj),
                 })
         
         return results

@@ -5,6 +5,7 @@ Simple, readable, production-ready pipeline to extract semantic data from review
 ### Overview
 
 This pipeline transforms cleaned reviews into 3 raw tables:
+
 - **entities_raw**: Review entities with types (scenic_spot, ritual, etc.)
 - **relations_raw**: Relationships between entities
 - **sentiments_raw**: Aspect-level sentiment analysis
@@ -31,29 +32,21 @@ cleaned_reviews (source)
 
 ### Modules
 
-| Module | Purpose |
-|--------|---------|
-| `config.py` | Environment variables (OPENAI_API_KEY, SUPABASE_URL, SUPABASE_KEY, MAX_REVIEWS_PER_RUN) |
-| `prompt.py` | Build extraction prompt for LLM |
-| `batch_handler.py` | OpenAI Batch API: chunking, submission, polling |
-| `json_recovery.py` | Regex-based malformed JSON recovery |
-| `transformer.py` | Transform LLM JSON → 3 raw tables |
-| `loader.py` | Incremental loading + checkpoint tracking |
-| `main.py` | Orchestration (fetch → extract → transform → load) |
-| `schema.sql` | Database schema (3 raw tables + checkpoint) |
-| `test_pipeline.py` | 10-record end-to-end test |
+| Module             | Purpose                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `config.py`        | Environment variables (OPENAI_API_KEY, SUPABASE_URL, SUPABASE_KEY, MAX_REVIEWS_PER_RUN) |
+| `prompt.py`        | Build extraction prompt for LLM                                                         |
+| `batch_handler.py` | OpenAI Batch API: chunking, submission, polling                                         |
+| `json_recovery.py` | Regex-based malformed JSON recovery                                                     |
+| `transformer.py`   | Transform LLM JSON → 3 raw tables                                                       |
+| `loader.py`        | Incremental loading + checkpoint tracking                                               |
+| `main.py`          | Orchestration (fetch → extract → transform → load)                                      |
+| `schema.sql`       | Database schema (3 raw tables + checkpoint)                                             |
+| `test_pipeline.py` | 10-record end-to-end test                                                               |
 
 ### Setup
 
-#### 1. Create Database Tables
-
-```bash
-# Execute in Supabase SQL Editor
-cat llm-extract/schema.sql | pbcopy
-# Paste in SQL editor and execute
-```
-
-#### 2. Install Dependencies
+#### 1. Install Dependencies
 
 ```bash
 pip install -r llm-extract/requirements.txt
@@ -97,13 +90,14 @@ MAX_REVIEWS_PER_RUN=10 python llm-extract/main.py
 
 The pipeline tracks progress in the `extraction_checkpoint` table:
 
-| review_id | status | error_msg | attempt_count | last_attempt_time |
-|-----------|--------|-----------|---------------|--------------------|
-| rev_001 | processed | NULL | 1 | 2024-01-15 10:00:00 |
-| rev_002 | failed | JSON parse error | 1 | 2024-01-15 10:01:00 |
-| rev_003 | pending | NULL | 0 | NULL |
+| review_id | status    | error_msg        | attempt_count | last_attempt_time   |
+| --------- | --------- | ---------------- | ------------- | ------------------- |
+| rev_001   | processed | NULL             | 1             | 2024-01-15 10:00:00 |
+| rev_002   | failed    | JSON parse error | 1             | 2024-01-15 10:01:00 |
+| rev_003   | pending   | NULL             | 0             | NULL                |
 
 **On each run**:
+
 1. Query `get_unprocessed_reviews()` → finds reviews with `status = pending` or missing checkpoint
 2. Skip already-processed reviews (status = processed)
 3. If extraction fails → store checkpoint with error
@@ -122,16 +116,22 @@ If LLM response is malformed:
 ### Data Transformation
 
 LLM returns:
+
 ```json
 {
   "entities": [
-    {"id": 1, "name": "pagoda", "type": "scenic_spot", "quote": "beautiful"}
+    { "id": 1, "name": "pagoda", "type": "scenic_spot", "quote": "beautiful" }
   ],
   "relations": [
-    {"from_id": 1, "to_id": 2, "type": "co_occurrence", "description": "..."}
+    { "from_id": 1, "to_id": 2, "type": "co_occurrence", "description": "..." }
   ],
   "aspect_sentiments": [
-    {"aspect": "environment", "sentiment": "positive", "score": 0.9, "evidence": "..."}
+    {
+      "aspect": "environment",
+      "sentiment": "positive",
+      "score": 0.9,
+      "evidence": "..."
+    }
   ],
   "review_type": "devotional",
   "dominant_experience": "Spiritual awakening"
@@ -139,6 +139,7 @@ LLM returns:
 ```
 
 Transforms to:
+
 - **entities_raw**: review_id, year, period, trip_type, entity_name, entity_type, quote, rating
 - **relations_raw**: review_id, year, source_node, target_node, relation, description
 - **sentiments_raw**: review_id, year, trip_type, aspect, sentiment, score, evidence, rating
@@ -155,6 +156,7 @@ All events logged to stderr as JSON (one per line):
 ```
 
 Parse with:
+
 ```bash
 python llm-extract/main.py 2>&1 | jq '.event'
 ```
@@ -165,7 +167,7 @@ Query results in Supabase:
 
 ```sql
 -- Check extraction progress
-SELECT COUNT(*) as processed, 
+SELECT COUNT(*) as processed,
        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed
 FROM extraction_checkpoint;
 
@@ -195,18 +197,22 @@ Uses OpenAI Batch API (50% discount vs standard API).
 ### Troubleshooting
 
 **Issue**: "Missing required env vars"
+
 - Set: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_KEY
 
 **Issue**: "Supabase connectivity failed"
+
 - Verify SUPABASE_URL and SUPABASE_KEY are correct
 - Check network connection
 
 **Issue**: "Batch processing timeout"
+
 - Default timeout: 3600s (1 hour)
 - OpenAI may take 10-30 min for batch processing
 - Check batch status: https://platform.openai.com/batches
 
 **Issue**: "JSON parse failed for review X"
+
 - Logged in checkpoint table with error message
 - Review will be skipped on next run
 - Manually inspect LLM output if needed
