@@ -1,0 +1,61 @@
+name: Extract Pashupatinath Reviews (Gold Layer)
+
+on:
+  schedule:
+    # Run weekly on Mondays at 6 AM UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240  # 4 hours max for Batch API polling
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install openai supabase pydantic python-dotenv
+      
+      - name: Run extraction pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CHUNK_SIZE: 45
+          POLL_INTERVAL_SECONDS: 30
+          MAX_RETRIES: 3
+          MAX_REVIEWS_PER_RUN: 10000
+          VERBOSE_LOGGING: "true"
+          DRY_RUN: "false"
+        run: |
+          cd llm-extract && python main.py
+      
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extraction-logs-${{ github.run_id }}
+          path: |
+            llm-extract/*.log
+          retention-days: 30
+      
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Gold Layer Extraction Failed - Run ${context.runId}`,
+              body: `**Workflow**: [${context.workflow}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n\nCheck logs for details.`,
+              labels: ['bug', 'extraction']
+            })
