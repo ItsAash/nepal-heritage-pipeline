@@ -51,14 +51,21 @@ def transform_extraction(
     sentiments = []
     
     try:
+        entity_name_by_llm_id = {}
+
         # Transform entities
         for entity in data.get("entities", []):
+            llm_entity_id = entity.get("id")
+            entity_name = entity.get("name", "")
+            if llm_entity_id is not None:
+                entity_name_by_llm_id[str(llm_entity_id)] = entity_name
+
             entities.append({
                 "review_id": review_id,
                 "year": year,
                 "period": period,
                 "trip_type": trip_type,
-                "entity_name": entity.get("name", ""),
+                "entity_name": entity_name,
                 "entity_type": entity.get("type", ""),
                 "quote": entity.get("quote", ""),
                 "rating": rating,
@@ -66,11 +73,14 @@ def transform_extraction(
         
         # Transform relations
         for relation in data.get("relations", []):
+            source_ref = relation.get("from_id", "")
+            target_ref = relation.get("to_id", "")
+
             relations.append({
                 "review_id": review_id,
                 "year": year,
-                "source_node": relation.get("from_id", ""),
-                "target_node": relation.get("to_id", ""),
+                "source_node": entity_name_by_llm_id.get(str(source_ref), source_ref),
+                "target_node": entity_name_by_llm_id.get(str(target_ref), target_ref),
                 "relation": relation.get("type", ""),
                 "description": relation.get("description", ""),
             })

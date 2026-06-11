@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import List
@@ -29,13 +30,27 @@ class SchemaBuilder:
                 "extraction/03_sentiments_raw.sql",
                 "extraction/04_extraction_checkpoint.sql",
             ]),
+            ("Canonical Tables", [
+                "canonical/01_normalization_runs.sql",
+                "canonical/02_entities.sql",
+                "canonical/03_entity_aliases.sql",
+                "canonical/04_entity_alias_candidates.sql",
+                "canonical/05_entity_mentions.sql",
+                "canonical/06_relations.sql",
+                "canonical/07_relation_mentions.sql",
+                "canonical/08_sentiments.sql",
+                "canonical/09_sentiment_mentions.sql",
+                "canonical/10_normalization_checkpoints.sql",
+            ]),
             ("Functions", [
                 "functions/01_get_unprocessed_reviews.sql",
                 "functions/02_update_checkpoint.sql",
+                "functions/03_refresh_canonical_aggregates.sql",
             ]),
             ("Indexes", [
                 "indexes/core_indexes.sql",
                 "indexes/extraction_indexes.sql",
+                "indexes/canonical_indexes.sql",
             ]),
         ]
 
@@ -44,7 +59,36 @@ class SchemaBuilder:
         full_path = self.db_root / rel_path
         if not full_path.exists():
             raise FileNotFoundError(f"Missing SQL file: {full_path}")
-        return full_path.read_text(encoding="utf-8")
+        return self.make_non_destructive(full_path.read_text(encoding="utf-8"))
+
+    def make_non_destructive(self, sql: str) -> str:
+        """Remove destructive DDL and make create statements idempotent."""
+        lines = []
+        for line in sql.splitlines():
+            if re.match(r"^\s*DROP\s+(TABLE|FUNCTION|INDEX|VIEW)\s+IF\s+EXISTS\b", line, re.IGNORECASE):
+                continue
+            lines.append(line)
+
+        output = "\n".join(lines)
+        output = re.sub(
+            r"\bCREATE\s+TABLE\s+(?!IF\s+NOT\s+EXISTS\b)",
+            "CREATE TABLE IF NOT EXISTS ",
+            output,
+            flags=re.IGNORECASE,
+        )
+        output = re.sub(
+            r"\bCREATE\s+UNIQUE\s+INDEX\s+(?!IF\s+NOT\s+EXISTS\b)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ",
+            output,
+            flags=re.IGNORECASE,
+        )
+        output = re.sub(
+            r"\bCREATE\s+INDEX\s+(?!IF\s+NOT\s+EXISTS\b)",
+            "CREATE INDEX IF NOT EXISTS ",
+            output,
+            flags=re.IGNORECASE,
+        )
+        return output
 
     def build(self) -> str:
         """Build the complete schema by concatenating all sections."""

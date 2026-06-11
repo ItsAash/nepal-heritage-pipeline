@@ -1,0 +1,61 @@
+name: Normalize Gold Canonical Layer
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_processed:
+        description: "Reprocess rows already recorded in normalization_checkpoints"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      max_rows_per_run:
+        description: "Maximum rows per raw staging table to process"
+        required: false
+        default: "10000"
+      auto_alias_threshold:
+        description: "Similarity threshold for auto-approving learned aliases"
+        required: false
+        default: "95"
+      candidate_alias_threshold:
+        description: "Similarity threshold for queueing alias candidates"
+        required: false
+        default: "75"
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r gold-normalize/requirements.txt
+
+      - name: Run normalizer tests
+        run: |
+          python3 gold-normalize/test_normalizer.py
+
+      - name: Run Gold canonical normalization
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MAX_ROWS_PER_RUN: ${{ inputs.max_rows_per_run }}
+          AUTO_ALIAS_THRESHOLD: ${{ inputs.auto_alias_threshold }}
+          CANDIDATE_ALIAS_THRESHOLD: ${{ inputs.candidate_alias_threshold }}
+        run: |
+          if [ "${{ inputs.include_processed }}" = "true" ]; then
+            python3 gold-normalize/main.py --include-processed
+          else
+            python3 gold-normalize/main.py
+          fi

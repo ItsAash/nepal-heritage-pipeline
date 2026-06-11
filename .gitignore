@@ -2,3 +2,7 @@
 .venv/
 __pycache__/db/schema.sql
 .DS_Store
+
+# nested pycache
+**/__pycache__/
+**/__pycache__/**

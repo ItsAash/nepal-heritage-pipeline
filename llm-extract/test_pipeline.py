@@ -255,6 +255,8 @@ def test_json_transformation():
         assert len(entities) == 2, f"Expected 2 entities, got {len(entities)}"
         assert len(relations) == 1, f"Expected 1 relation, got {len(relations)}"
         assert len(sentiments) == 1, f"Expected 1 sentiment, got {len(sentiments)}"
+        assert relations[0]["source_node"] == "pagoda", "Relation source should resolve LLM entity ID to entity name"
+        assert relations[0]["target_node"] == "awe", "Relation target should resolve LLM entity ID to entity name"
         
         print(f"✓ JSON transformation successful")
         print(f"  - Entities: {len(entities)}")
