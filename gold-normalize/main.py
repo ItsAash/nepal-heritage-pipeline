@@ -1,40 +1,36 @@
 """
 Standalone Gold Canonical normalization workflow.
-
-This job reads existing staging tables in Supabase:
-  - entities_raw
-  - relations_raw
-  - sentiments_raw
-
-It writes canonical tables and mention tables without mutating raw tables.
 """
 
 import argparse
 import os
-
 import dotenv
-
 from loader import CanonicalLoader
 
-
-def parse_args() -> argparse.Namespace:
+def parse_args():
     parser = argparse.ArgumentParser(description="Normalize Gold staging rows into canonical Gold tables.")
     parser.add_argument(
         "--limit",
         type=int,
-        default=os.getenv("MAX_ROWS_PER_RUN"),
+        default=int(os.getenv("MAX_ROWS_PER_RUN", "1000000")),
         help="Maximum raw rows per staging table to process in this run.",
     )
     parser.add_argument(
-        "--include-processed",
-        action="store_true",
-        help="Reprocess rows already present in normalization_checkpoints. Mention upserts keep this idempotent.",
+        "--batch-size",
+        type=int,
+        default=int(os.getenv("NORMALIZATION_BATCH_SIZE", "100")),
+        help="Number of records to process before flushing to database.",
     )
     parser.add_argument(
         "--page-size",
         type=int,
-        default=int(os.getenv("NORMALIZATION_PAGE_SIZE", "1000")),
+        default=int(os.getenv("NORMALIZATION_PAGE_SIZE", "100")),
         help="Supabase page size for table scans.",
+    )
+    parser.add_argument(
+        "--include-processed",
+        action="store_true",
+        help="Reprocess rows already present in normalization_checkpoints.",
     )
     parser.add_argument(
         "--auto-alias-threshold",
@@ -50,7 +46,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def main() -> int:
     dotenv.load_dotenv()
     args = parse_args()
@@ -60,7 +55,6 @@ def main() -> int:
     if not supabase_url or not supabase_key:
         raise ValueError("Missing required env vars: SUPABASE_URL, SUPABASE_KEY")
 
-    limit = int(args.limit) if args.limit is not None else None
     loader = CanonicalLoader(
         supabase_url=supabase_url,
         supabase_key=supabase_key,
@@ -68,9 +62,13 @@ def main() -> int:
         auto_alias_threshold=args.auto_alias_threshold,
         candidate_alias_threshold=args.candidate_alias_threshold,
     )
-    loader.run(limit=limit, include_processed=args.include_processed)
+    
+    # Set the batch size for processing
+    loader.batch_size = args.batch_size
+    
+    loader.run(limit=args.limit, include_processed=args.include_processed)
     return 0
 
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+    sys.exit(main())

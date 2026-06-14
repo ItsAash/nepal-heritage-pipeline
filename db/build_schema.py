@@ -34,7 +34,6 @@ class SchemaBuilder:
                 "canonical/01_normalization_runs.sql",
                 "canonical/02_entities.sql",
                 "canonical/03_entity_aliases.sql",
-                "canonical/04_entity_alias_candidates.sql",
                 "canonical/05_entity_mentions.sql",
                 "canonical/06_relations.sql",
                 "canonical/07_relation_mentions.sql",

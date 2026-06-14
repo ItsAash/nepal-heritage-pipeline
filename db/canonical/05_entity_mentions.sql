@@ -1,33 +1,27 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- CANONICAL TABLE: entity_mentions
 -- ═══════════════════════════════════════════════════════════════════
--- Mention-level provenance for canonical entities.
+-- Provenance for entities: links raw record to canonical entity.
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE TABLE IF NOT EXISTS entity_mentions (
-    id                BIGSERIAL PRIMARY KEY,
-    raw_entity_id     BIGINT UNIQUE NOT NULL,
-    entity_id         BIGINT NOT NULL REFERENCES entities(id),
-    review_id         TEXT NOT NULL,
-    year              INTEGER,
-    period            TEXT,
-    trip_type         TEXT,
-    rating            NUMERIC,
-    entity_name_raw   TEXT NOT NULL,
-    normalized_alias  TEXT NOT NULL,
-    entity_type_raw   TEXT NOT NULL,
-    quote             TEXT,
-    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+DROP TABLE IF EXISTS entity_mentions CASCADE;
+
+CREATE TABLE entity_mentions (
+    id                  BIGSERIAL PRIMARY KEY,
+    entity_id           BIGINT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    review_id           TEXT NOT NULL,
+    raw_entity_id       BIGINT NOT NULL,
+    entity_name_raw     TEXT,
+    normalized_alias    TEXT,
+    entity_type_raw     TEXT,
+    quote               TEXT,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (raw_entity_id)
 );
 
-ALTER TABLE entity_mentions
-    ADD COLUMN IF NOT EXISTS normalized_alias TEXT NOT NULL DEFAULT '';
+-- Index for join performance
+CREATE INDEX idx_entity_mentions_review_id ON entity_mentions(review_id);
+CREATE INDEX idx_entity_mentions_entity_id ON entity_mentions(entity_id);
 
-UPDATE entity_mentions
-SET normalized_alias = lower(trim(regexp_replace(regexp_replace(entity_name_raw, '[[:punct:]]', ' ', 'g'), '[[:space:]]+', ' ', 'g')))
-WHERE normalized_alias = '';
-
-COMMENT ON TABLE entity_mentions IS 'One row per raw entity mention after canonical resolution. Preserves review-level provenance.';
-COMMENT ON COLUMN entity_mentions.raw_entity_id IS 'entities_raw.id; unique to keep normalization rerunnable without duplicates';
-COMMENT ON COLUMN entity_mentions.normalized_alias IS 'Python-normalized entity alias used during canonical resolution';
+-- Table comment
+COMMENT ON TABLE entity_mentions IS 'Provenance for entities. Links raw LLM extraction to canonical entity nodes.';

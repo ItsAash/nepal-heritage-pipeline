@@ -11,3 +11,7 @@ rapidfuzz>=3.6.0
 
 # Utilities
 python-dotenv>=1.0.0
+
+# Resilience & HTTP
+tenacity>=8.2.0
+httpx>=0.27.0

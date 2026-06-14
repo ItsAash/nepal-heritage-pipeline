@@ -1,25 +1,27 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- CANONICAL TABLE: sentiment_mentions
 -- ═══════════════════════════════════════════════════════════════════
--- Mention-level provenance for canonical aspect sentiments.
+-- Provenance for sentiments: links raw record to canonical sentiment.
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE TABLE IF NOT EXISTS sentiment_mentions (
-    id                BIGSERIAL PRIMARY KEY,
-    raw_sentiment_id  BIGINT UNIQUE NOT NULL,
-    sentiment_id      BIGINT NOT NULL REFERENCES sentiments(id),
-    review_id         TEXT NOT NULL,
-    year              INTEGER,
-    period            TEXT,
-    trip_type         TEXT,
-    rating            NUMERIC,
-    aspect_raw        TEXT NOT NULL,
-    sentiment_label   TEXT NOT NULL,
-    sentiment_score   NUMERIC NOT NULL,
-    evidence          TEXT,
-    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+DROP TABLE IF EXISTS sentiment_mentions CASCADE;
+
+CREATE TABLE sentiment_mentions (
+    id                  BIGSERIAL PRIMARY KEY,
+    sentiment_id        BIGINT NOT NULL REFERENCES sentiments(id) ON DELETE CASCADE,
+    review_id           TEXT NOT NULL,
+    raw_sentiment_id    BIGINT NOT NULL,
+    aspect_raw          TEXT,
+    sentiment_label     TEXT,
+    sentiment_score     NUMERIC,
+    evidence            TEXT,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (raw_sentiment_id)
 );
 
-COMMENT ON TABLE sentiment_mentions IS 'One row per raw aspect sentiment after aspect normalization. Preserves review-level evidence.';
-COMMENT ON COLUMN sentiment_mentions.raw_sentiment_id IS 'sentiments_raw.id; unique to keep normalization rerunnable without duplicates';
+-- Index for join performance
+CREATE INDEX idx_sentiment_mentions_review_id ON sentiment_mentions(review_id);
+CREATE INDEX idx_sentiment_mentions_sentiment_id ON sentiment_mentions(sentiment_id);
+
+-- Table comment
+COMMENT ON TABLE sentiment_mentions IS 'Provenance for sentiments. Links raw LLM extraction to canonical entity sentiment.';

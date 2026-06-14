@@ -1,25 +1,27 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- CANONICAL TABLE: relation_mentions
 -- ═══════════════════════════════════════════════════════════════════
--- Mention-level provenance for canonical relations.
+-- Provenance for relations: links raw record to canonical relation.
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE TABLE IF NOT EXISTS relation_mentions (
-    id                 BIGSERIAL PRIMARY KEY,
-    raw_relation_id    BIGINT UNIQUE NOT NULL,
-    relation_id        BIGINT NOT NULL REFERENCES relations(id),
-    review_id          TEXT NOT NULL,
-    year               INTEGER,
-    period             TEXT,
-    trip_type          TEXT,
-    rating             NUMERIC,
-    source_node_raw    TEXT NOT NULL,
-    target_node_raw    TEXT NOT NULL,
-    relation_type_raw  TEXT NOT NULL,
-    description        TEXT,
-    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+DROP TABLE IF EXISTS relation_mentions CASCADE;
+
+CREATE TABLE relation_mentions (
+    id                  BIGSERIAL PRIMARY KEY,
+    relation_id         BIGINT NOT NULL REFERENCES relations(id) ON DELETE CASCADE,
+    review_id           TEXT NOT NULL,
+    raw_relation_id     BIGINT NOT NULL,
+    source_node_raw     TEXT,
+    target_node_raw     TEXT,
+    relation_type_raw   TEXT,
+    description         TEXT,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (raw_relation_id)
 );
 
-COMMENT ON TABLE relation_mentions IS 'One row per raw relation mention after canonical source/target resolution.';
-COMMENT ON COLUMN relation_mentions.raw_relation_id IS 'relations_raw.id; unique to keep normalization rerunnable without duplicates';
+-- Index for join performance
+CREATE INDEX idx_relation_mentions_review_id ON relation_mentions(review_id);
+CREATE INDEX idx_relation_mentions_relation_id ON relation_mentions(relation_id);
+
+-- Table comment
+COMMENT ON TABLE relation_mentions IS 'Provenance for relations. Links raw LLM extraction to canonical relation edges.';

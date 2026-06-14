@@ -18,7 +18,6 @@ db/
 │   ├── 01_normalization_runs.sql
 │   ├── 02_entities.sql
 │   ├── 03_entity_aliases.sql
-│   ├── 04_entity_alias_candidates.sql
 │   ├── 05_entity_mentions.sql
 │   ├── 06_relations.sql
 │   ├── 07_relation_mentions.sql
@@ -84,8 +83,7 @@ python db/build_schema.py --validate
 | Table | Description | Key Columns |
 |-------|-------------|-------------|
 | `entities` | Canonical deduplicated entity nodes | `canonical_name`, `display_name`, `entity_type`, `mention_count` |
-| `entity_aliases` | Approved learned aliases | `normalized_alias`, `entity_id`, `source`, `confidence`, `scope_type` |
-| `entity_alias_candidates` | Review queue for uncertain aliases | `normalized_alias`, `suggested_entity_id`, `confidence`, `status` |
+| `entity_aliases` | Approved learned aliases and candidates | `normalized_alias`, `entity_id`, `status`, `confidence`, `scope_type` |
 | `relations` | Canonical weighted graph edges | `source_entity_id`, `target_entity_id`, `relation_type`, `weight` |
 | `sentiments` | Canonical aspect-level sentiment aggregates | `aspect`, `positive_count`, `neutral_count`, `negative_count`, `avg_sentiment_score` |
 | `entity_mentions` | Review-level entity provenance | `raw_entity_id`, `entity_id`, `review_id`, temporal/trip metadata |

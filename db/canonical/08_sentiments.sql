@@ -1,23 +1,30 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- CANONICAL TABLE: sentiments
 -- ═══════════════════════════════════════════════════════════════════
--- Canonical aspect-level sentiment aggregates.
+-- Aggregated sentiment profiles per canonical entity.
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE TABLE IF NOT EXISTS sentiments (
-    id                   BIGSERIAL PRIMARY KEY,
-    aspect               TEXT UNIQUE NOT NULL,
-    display_aspect       TEXT NOT NULL,
-    positive_count       INTEGER DEFAULT 0,
-    neutral_count        INTEGER DEFAULT 0,
-    negative_count       INTEGER DEFAULT 0,
-    mention_count        INTEGER DEFAULT 0,
-    avg_sentiment_score  NUMERIC,
-    first_seen_year      INTEGER,
-    last_seen_year       INTEGER,
-    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+DROP TABLE IF EXISTS sentiments CASCADE;
+
+CREATE TABLE sentiments (
+    id                  BIGSERIAL PRIMARY KEY,
+    aspect              TEXT NOT NULL UNIQUE,
+    display_aspect      TEXT,
+    
+    -- Sentiment counts
+    positive_count      INTEGER DEFAULT 0,
+    neutral_count       INTEGER DEFAULT 0,
+    negative_count      INTEGER DEFAULT 0,
+    mention_count       INTEGER DEFAULT 0,
+    
+    -- Aggregate metrics
+    avg_sentiment_score NUMERIC DEFAULT 0.5,
+    first_seen_year     INTEGER,
+    last_seen_year      INTEGER,
+    
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE sentiments IS 'Canonical aspect-level sentiment aggregates derived from sentiments_raw.';
-COMMENT ON COLUMN sentiments.aspect IS 'Stable normalized aspect key, e.g. ritual_experience';
+-- Table comment
+COMMENT ON TABLE sentiments IS 'Aggregated sentiment profiles per canonical aspect.';
+COMMENT ON COLUMN sentiments.avg_sentiment_score IS 'Mean sentiment score (0.0-1.0) across all mentions';

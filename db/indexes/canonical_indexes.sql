@@ -13,18 +13,9 @@ CREATE INDEX IF NOT EXISTS idx_entity_aliases_normalized ON entity_aliases(norma
 CREATE INDEX IF NOT EXISTS idx_entity_aliases_type_scope ON entity_aliases(entity_type, scope_type, scope_id);
 CREATE INDEX IF NOT EXISTS idx_entity_aliases_confidence ON entity_aliases(confidence DESC);
 
--- entity_alias_candidates
-CREATE INDEX IF NOT EXISTS idx_entity_alias_candidates_status ON entity_alias_candidates(status);
-CREATE INDEX IF NOT EXISTS idx_entity_alias_candidates_alias ON entity_alias_candidates(normalized_alias);
-CREATE INDEX IF NOT EXISTS idx_entity_alias_candidates_entity ON entity_alias_candidates(suggested_entity_id);
-CREATE INDEX IF NOT EXISTS idx_entity_alias_candidates_confidence ON entity_alias_candidates(confidence DESC);
-
 -- entity_mentions
 CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity_id ON entity_mentions(entity_id);
 CREATE INDEX IF NOT EXISTS idx_entity_mentions_review_id ON entity_mentions(review_id);
-CREATE INDEX IF NOT EXISTS idx_entity_mentions_year ON entity_mentions(year);
-CREATE INDEX IF NOT EXISTS idx_entity_mentions_period ON entity_mentions(period);
-CREATE INDEX IF NOT EXISTS idx_entity_mentions_trip_type ON entity_mentions(trip_type);
 
 -- relations
 CREATE INDEX IF NOT EXISTS idx_relations_source_entity ON relations(source_entity_id);
@@ -35,7 +26,6 @@ CREATE INDEX IF NOT EXISTS idx_relations_weight ON relations(weight DESC);
 -- relation_mentions
 CREATE INDEX IF NOT EXISTS idx_relation_mentions_relation_id ON relation_mentions(relation_id);
 CREATE INDEX IF NOT EXISTS idx_relation_mentions_review_id ON relation_mentions(review_id);
-CREATE INDEX IF NOT EXISTS idx_relation_mentions_year ON relation_mentions(year);
 
 -- sentiments
 CREATE INDEX IF NOT EXISTS idx_sentiments_aspect ON sentiments(aspect);
@@ -44,7 +34,6 @@ CREATE INDEX IF NOT EXISTS idx_sentiments_mention_count ON sentiments(mention_co
 -- sentiment_mentions
 CREATE INDEX IF NOT EXISTS idx_sentiment_mentions_sentiment_id ON sentiment_mentions(sentiment_id);
 CREATE INDEX IF NOT EXISTS idx_sentiment_mentions_review_id ON sentiment_mentions(review_id);
-CREATE INDEX IF NOT EXISTS idx_sentiment_mentions_year ON sentiment_mentions(year);
 CREATE INDEX IF NOT EXISTS idx_sentiment_mentions_label ON sentiment_mentions(sentiment_label);
 
 -- normalization tracking
@@ -54,4 +43,3 @@ CREATE INDEX IF NOT EXISTS idx_normalization_checkpoints_status ON normalization
 
 COMMENT ON INDEX idx_relations_weight IS 'Ranks canonical graph edges by supporting mention count';
 COMMENT ON INDEX idx_sentiment_mentions_label IS 'Filters positive, neutral, and negative aspect mentions';
-COMMENT ON INDEX idx_entity_alias_candidates_status IS 'Finds pending alias suggestions for review';

@@ -16,12 +16,13 @@ BEGIN
         updated_at = CURRENT_TIMESTAMP
     FROM (
         SELECT
-            entity_id,
+            em.entity_id,
             COUNT(*)::INTEGER AS mention_count,
-            MIN(year) AS first_seen_year,
-            MAX(year) AS last_seen_year
-        FROM entity_mentions
-        GROUP BY entity_id
+            MIN(cr.year) AS first_seen_year,
+            MAX(cr.year) AS last_seen_year
+        FROM entity_mentions em
+        LEFT JOIN cleaned_reviews cr ON em.review_id = cr.review_id
+        GROUP BY em.entity_id
     ) stats
     WHERE e.id = stats.entity_id;
 
@@ -62,12 +63,13 @@ BEGIN
         updated_at = CURRENT_TIMESTAMP
     FROM (
         SELECT
-            relation_id,
+            rm.relation_id,
             COUNT(*)::INTEGER AS weight,
-            MIN(year) AS first_seen_year,
-            MAX(year) AS last_seen_year
-        FROM relation_mentions
-        GROUP BY relation_id
+            MIN(cr.year) AS first_seen_year,
+            MAX(cr.year) AS last_seen_year
+        FROM relation_mentions rm
+        LEFT JOIN cleaned_reviews cr ON rm.review_id = cr.review_id
+        GROUP BY rm.relation_id
     ) stats
     WHERE r.id = stats.relation_id;
 
@@ -93,16 +95,17 @@ BEGIN
         updated_at = CURRENT_TIMESTAMP
     FROM (
         SELECT
-            sentiment_id,
-            COUNT(*) FILTER (WHERE sentiment_label = 'positive')::INTEGER AS positive_count,
-            COUNT(*) FILTER (WHERE sentiment_label = 'neutral')::INTEGER AS neutral_count,
-            COUNT(*) FILTER (WHERE sentiment_label = 'negative')::INTEGER AS negative_count,
+            sm.sentiment_id,
+            COUNT(*) FILTER (WHERE sm.sentiment_label = 'positive')::INTEGER AS positive_count,
+            COUNT(*) FILTER (WHERE sm.sentiment_label = 'neutral')::INTEGER AS neutral_count,
+            COUNT(*) FILTER (WHERE sm.sentiment_label = 'negative')::INTEGER AS negative_count,
             COUNT(*)::INTEGER AS mention_count,
-            AVG(sentiment_score) AS avg_sentiment_score,
-            MIN(year) AS first_seen_year,
-            MAX(year) AS last_seen_year
-        FROM sentiment_mentions
-        GROUP BY sentiment_id
+            AVG(sm.sentiment_score) AS avg_sentiment_score,
+            MIN(cr.year) AS first_seen_year,
+            MAX(cr.year) AS last_seen_year
+        FROM sentiment_mentions sm
+        LEFT JOIN cleaned_reviews cr ON sm.review_id = cr.review_id
+        GROUP BY sm.sentiment_id
     ) stats
     WHERE s.id = stats.sentiment_id;
 
