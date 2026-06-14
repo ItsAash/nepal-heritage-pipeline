@@ -11,10 +11,18 @@ on:
         options:
           - "false"
           - "true"
-      max_rows_per_run:
+      limit:
         description: "Maximum rows per raw staging table to process"
         required: false
         default: "10000"
+      batch_size:
+        description: "Number of records to process before flushing to database"
+        required: false
+        default: "100"
+      page_size:
+        description: "Supabase page size for table scans"
+        required: false
+        default: "100"
       auto_alias_threshold:
         description: "Similarity threshold for auto-approving learned aliases"
         required: false
@@ -50,12 +58,16 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          MAX_ROWS_PER_RUN: ${{ inputs.max_rows_per_run }}
-          AUTO_ALIAS_THRESHOLD: ${{ inputs.auto_alias_threshold }}
-          CANDIDATE_ALIAS_THRESHOLD: ${{ inputs.candidate_alias_threshold }}
         run: |
+          CMD="python3 gold-normalize/main.py \
+            --limit ${{ inputs.limit }} \
+            --batch-size ${{ inputs.batch_size }} \
+            --page-size ${{ inputs.page_size }} \
+            --auto-alias-threshold ${{ inputs.auto_alias_threshold }} \
+            --candidate-alias-threshold ${{ inputs.candidate_alias_threshold }}"
+          
           if [ "${{ inputs.include_processed }}" = "true" ]; then
-            python3 gold-normalize/main.py --include-processed
-          else
-            python3 gold-normalize/main.py
+            CMD="$CMD --include-processed"
           fi
+          
+          eval $CMD
