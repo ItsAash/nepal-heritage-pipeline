@@ -12,9 +12,11 @@ from neo4j import GraphDatabase
 from supabase import create_client, ClientOptions
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-# Constants for edge weighting from the research codebase
-EDGE_WEIGHT_ALPHA = 0.7  # Co-occurrence coefficient
-EDGE_WEIGHT_BETA = 0.3   # Causal/description/contrast coefficient
+import queries
+
+# Constants for edge weighting
+EDGE_WEIGHT_ALPHA = 0.7
+EDGE_WEIGHT_BETA = 0.3
 
 RETRYABLE_EXCEPTIONS = (
     httpx.ConnectError,
@@ -64,6 +66,14 @@ class Neo4jSyncJob:
     def close(self):
         self.driver.close()
 
+    def _setup_constraints(self):
+        with self.driver.session() as session:
+            for q in queries.SETUP_CONSTRAINTS:
+                try:
+                    session.run(q)
+                except Exception as e:
+                    log_event("constraint_setup_failed", {"query": q, "error": str(e)}, "WARNING")
+
     @with_retry()
     def _call_refresh_mvs(self):
         self.supabase.rpc('refresh_neo4j_mvs', {}).execute()
@@ -71,11 +81,13 @@ class Neo4jSyncJob:
     def run(self, limit: int = 100000):
         log_event("sync_started", {"limit": limit})
         
+        self._setup_constraints()
+
         log_event("refreshing_mvs")
         try:
             self._call_refresh_mvs()
         except Exception as e:
-            log_event("mvs_refresh_failed_or_missing", {"error": str(e)}, "WARNING")
+            log_event("mvs_refresh_failed", {"error": str(e)}, "WARNING")
 
         self._sync_entities(limit)
         self._sync_reviews(limit)
@@ -100,7 +112,7 @@ class Neo4jSyncJob:
         self.supabase.table("neo4j_sync_checkpoints").upsert({
             "table_name": table_name,
             "last_synced_at": last_synced_at,
-            "last_synced_id": last_synced_id,
+            "last_synced_id": str(last_synced_id),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }).execute()
 
@@ -127,11 +139,15 @@ class Neo4jSyncJob:
         while has_more and processed < limit:
             batch_limit = min(self.batch_size, limit - processed)
             
-            # Composite keys: WHERE ts_col > last_synced_at OR (ts_col = last_synced_at AND id_col > last_synced_id) ORDER BY ts_col, id_col
-            # For Postgres, id_col is a string comparison.
-            query = self.supabase.table(table_name).select("*").or_(
-                f"{ts_col}.gt.{last_synced_at},and({ts_col}.eq.{last_synced_at},{id_col}.gt.{last_synced_id})"
-            ).order(ts_col, desc=False).order(id_col, desc=False).limit(batch_limit)
+            # Robust incremental fetch:
+            # If last_synced_id is empty, we just fetch ts > last_synced_at to avoid type casting issues on Postgres.
+            if last_synced_id:
+                filter_str = f"{ts_col}.gt.{last_synced_at},and({ts_col}.eq.{last_synced_at},{id_col}.gt.{last_synced_id})"
+                query = self.supabase.table(table_name).select("*").or_(filter_str)
+            else:
+                query = self.supabase.table(table_name).select("*").gt(ts_col, last_synced_at)
+                
+            query = query.order(ts_col, desc=False).order(id_col, desc=False).limit(batch_limit)
             
             try:
                 res = query.execute()
@@ -170,82 +186,26 @@ class Neo4jSyncJob:
         tx.run(query, batch=batch)
 
     def _sync_entities(self, limit: int):
-        q = '''
-        UNWIND $batch AS row
-        MERGE (e:Entity {entity_id: row.id})
-        SET e.canonical_name = row.canonical_name,
-            e.display_name = row.display_name,
-            e.entity_type = row.entity_type,
-            e.mention_count = row.mention_count,
-            e.first_seen_year = row.first_seen_year,
-            e.last_seen_year = row.last_seen_year
-        '''
-        self._sync_table("entities", "id", "updated_at", limit, q)
+        self._sync_table("entities", "id", "updated_at", limit, queries.SYNC_ENTITIES)
 
     def _sync_reviews(self, limit: int):
-        q = '''
-        UNWIND $batch AS row
-        MERGE (r:Review {review_id: row.review_id})
-        SET r.text_clean = row.text_clean,
-            r.rating = row.rating,
-            r.sentiment_class = row.sentiment_class,
-            r.year = row.year,
-            r.period = row.period,
-            r.trip_type = row.trip_type,
-            r.reviewer_type = row.reviewer_type,
-            r.language = row.language
-        '''
-        self._sync_table("cleaned_reviews", "review_id", "ingested_at", limit, q)
+        self._sync_table("cleaned_reviews", "review_id", "ingested_at", limit, queries.SYNC_REVIEWS)
 
     def _sync_sentiments(self, limit: int):
-        q = '''
-        UNWIND $batch AS row
-        MERGE (a:Aspect {aspect: row.aspect})
-        SET a.display_aspect = row.display_aspect,
-            a.mention_count = row.mention_count,
-            a.avg_sentiment_score = row.avg_sentiment_score,
-            a.aspect_id = row.id
-        '''
-        self._sync_table("sentiments", "id", "updated_at", limit, q)
+        self._sync_table("sentiments", "id", "updated_at", limit, queries.SYNC_SENTIMENTS)
 
     def _sync_entity_mentions(self, limit: int):
-        q = '''
-        UNWIND $batch AS row
-        MATCH (r:Review {review_id: row.review_id})
-        MATCH (e:Entity {entity_id: row.entity_id})
-        MERGE (r)-[m:MENTIONS]->(e)
-        SET m.quote = row.quote
-        '''
-        self._sync_table("entity_mentions", "id", "updated_at", limit, q)
+        self._sync_table("entity_mentions", "id", "updated_at", limit, queries.SYNC_ENTITY_MENTIONS)
 
     def _sync_sentiment_mentions(self, limit: int):
-        q = '''
-        UNWIND $batch AS row
-        MATCH (r:Review {review_id: row.review_id})
-        MATCH (a:Aspect {aspect_id: row.sentiment_id})
-        MERGE (r)-[expr:EXPRESSES_SENTIMENT]->(a)
-        SET expr.sentiment_label = row.sentiment_label,
-            expr.sentiment_score = row.sentiment_score,
-            expr.evidence = row.evidence
-        '''
-        self._sync_table("sentiment_mentions", "id", "updated_at", limit, q)
+        self._sync_table("sentiment_mentions", "id", "updated_at", limit, queries.SYNC_SENTIMENT_MENTIONS)
 
     def _sync_neo4j_edges(self, limit: int):
-        q = '''
-        UNWIND $batch AS row
-        MATCH (src:Entity {entity_id: row.source_entity_id})
-        MATCH (tgt:Entity {entity_id: row.target_entity_id})
-        MERGE (src)-[rel:RELATED_TO]->(tgt)
-        SET rel.weight = row.weight,
-            rel.co_occur_count = row.co_occur_count,
-            rel.semantic_count = row.semantic_count,
-            rel.first_seen_year = row.first_seen_year,
-            rel.last_seen_year = row.last_seen_year
-        '''
-        
         def calculate_weights(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             for d in data:
-                d["weight"] = EDGE_WEIGHT_ALPHA * (d.get("co_occur_count") or 0) + EDGE_WEIGHT_BETA * (d.get("semantic_count") or 0)
+                co = d.get("co_occur_count") or 0
+                se = d.get("semantic_count") or 0
+                d["weight"] = EDGE_WEIGHT_ALPHA * co + EDGE_WEIGHT_BETA * se
             return data
 
-        self._sync_table("neo4j_edges_mv", "id", "updated_at", limit, q, process_batch_fn=calculate_weights)
+        self._sync_table("neo4j_edges_mv", "id", "updated_at", limit, queries.SYNC_NEO4J_EDGES, process_batch_fn=calculate_weights)

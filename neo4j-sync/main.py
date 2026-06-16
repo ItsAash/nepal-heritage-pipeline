@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 import dotenv
-from sync_job import Neo4jSyncJob
+from job import Neo4jSyncJob
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Synchronize Canonical Gold tables to Neo4j Aura.")
