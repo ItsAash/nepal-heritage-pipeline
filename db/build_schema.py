@@ -46,6 +46,10 @@ class SchemaBuilder:
                 "functions/02_update_checkpoint.sql",
                 "functions/03_refresh_canonical_aggregates.sql",
             ]),
+            ("Neo4j Views", [
+                "neo4j/01_neo4j_sync_checkpoints.sql",
+                "neo4j/02_neo4j_edges_mv.sql",
+            ]),
             ("Indexes", [
                 "indexes/core_indexes.sql",
                 "indexes/extraction_indexes.sql",

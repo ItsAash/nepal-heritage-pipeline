@@ -27,6 +27,9 @@ db/
 ├── functions/            # PostgreSQL functions
 │   ├── 01_get_unprocessed_reviews.sql
 │   └── 02_update_checkpoint.sql
+├── neo4j/                # Job 4 (Neo4j Sync) materialized views and checkpoints
+│   ├── 01_neo4j_sync_checkpoints.sql
+│   └── 02_neo4j_edges_mv.sql
 ├── indexes/              # Performance indexes
 │   ├── core_indexes.sql
 │   └── extraction_indexes.sql

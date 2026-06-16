@@ -1,0 +1,57 @@
+name: Neo4j Graph Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Maximum raw rows per table to process"
+        required: false
+        default: "100000"
+      batch_size:
+        description: "Number of records to MERGE per transaction"
+        required: false
+        default: "500"
+      reset:
+        description: "Reset checkpoints and sync from scratch"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r neo4j-sync/requirements.txt
+
+      - name: Run Neo4j Sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          NEO4J_URI: ${{ secrets.NEO4J_URI }}
+          NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+        run: |
+          CMD="python3 neo4j-sync/main.py \
+            --limit ${{ inputs.limit }} \
+            --batch-size ${{ inputs.batch_size }}"
+          
+          if [ "${{ inputs.reset }}" = "true" ]; then
+            CMD="$CMD --reset"
+          fi
+          
+          eval $CMD
